@@ -1,7 +1,15 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# Windows 메모장에서 저장을 잘못하여 .env.txt로 저장된 경우 처리
+if not os.path.exists(".env") and os.path.exists(".env.txt"):
+    try:
+        import shutil
+        shutil.copy(".env.txt", ".env")
+    except Exception:
+        pass
+
+load_dotenv(dotenv_path=".env")
 
 class Config:
     TISTORY_LOGIN_ID = os.getenv("TISTORY_LOGIN_ID", "").strip()

@@ -16,7 +16,6 @@ def run_auto_blogger():
     missing_env = Config.validate()
     if missing_env:
         logger.error(f"필수 환경변수가 설정되지 않았습니다: {', '.join(missing_env)}")
-        logger.error(".env 파일에 TISTORY_LOGIN_ID, TISTORY_LOGIN_PW, TISTORY_BLOG_NAME을 설정해 주세요.")
         sys.exit(1)
 
     # 1. 콘텐츠 생성
@@ -28,13 +27,16 @@ def run_auto_blogger():
     title, content, tags = generator.generate_post()
     logger.info(f"생성된 포스팅 제목: {title}")
 
-    # 2. Playwright 브라우저 자동화로 포스팅 발행
-    logger.info("브라우저 원격 제어를 통한 티스토리 포스팅 작성을 진행합니다...")
+    # 2. Playwright 브라우저 연동으로 포스팅 발행 (CDP 또는 Persistent Profile)
+    logger.info("열려있는 크롬 브라우저 제어를 통한 티스토리 포스팅 작성을 진행합니다...")
     tistory_browser = TistoryBrowser(
         login_id=Config.TISTORY_LOGIN_ID,
         login_pw=Config.TISTORY_LOGIN_PW,
         blog_name=Config.TISTORY_BLOG_NAME,
-        headless=Config.HEADLESS
+        headless=Config.HEADLESS,
+        use_cdp=Config.USE_CDP,
+        cdp_url=Config.CDP_URL,
+        user_data_dir=Config.USER_DATA_DIR
     )
 
     result = tistory_browser.publish_post(

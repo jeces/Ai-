@@ -1,7 +1,6 @@
 import os
 from dotenv import load_dotenv
 
-# Windows 메모장에서 저장을 잘못하여 .env.txt로 저장된 경우 처리
 if not os.path.exists(".env") and os.path.exists(".env.txt"):
     try:
         import shutil
@@ -19,15 +18,14 @@ class Config:
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
 
-    HEADLESS = os.getenv("HEADLESS", "True").lower() == "true"
+    HEADLESS = os.getenv("HEADLESS", "False").lower() == "true"
+    USE_CDP = os.getenv("USE_CDP", "True").lower() == "true"
+    CDP_URL = os.getenv("CDP_URL", "http://localhost:9222").strip()
+    USER_DATA_DIR = os.getenv("USER_DATA_DIR", "./user_data").strip()
 
     @classmethod
     def validate(cls):
         missing = []
-        if not os.getenv("TISTORY_LOGIN_ID", "").strip():
-            missing.append("TISTORY_LOGIN_ID")
-        if not os.getenv("TISTORY_LOGIN_PW", "").strip():
-            missing.append("TISTORY_LOGIN_PW")
         if not os.getenv("TISTORY_BLOG_NAME", "").strip():
             missing.append("TISTORY_BLOG_NAME")
 

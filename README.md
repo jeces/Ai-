@@ -2,8 +2,6 @@
 
 매일 지정된 시간에 AI(OpenAI GPT)를 활용하여 흥미로운 주제의 글과 이미지를 자동으로 생성하고, **Playwright 브라우저 자동화**를 사용하여 티스토리(Tistory) 블로그(`jeces.tistory.com`)에 자동으로 포스팅하는 파이썬 프로그램입니다.
 
-> 💡 **특징**: 티스토리 Open API 엑세스 토큰 중단 이슈를 완벽히 해결하기 위해, 브라우저 원격 제어 방식으로 로그인 및 포스팅을 자동 진행합니다.
-
 ---
 
 ## 📁 프로젝트 구조
@@ -28,26 +26,33 @@
 
 ## 💻 Windows 데스크톱에서 실행하는 방법
 
-### 1. 환경 설정
-1. 이 프로젝트의 압축을 풀거나 폴더를 다운로드합니다.
-2. `.env.example` 파일의 이름을 `.env`로 변경합니다.
+### 1. 환경 설정 및 .env 파일 생성
+1. 이 프로젝트의 폴더를 다운로드합니다.
+2. `.env.example` 파일의 이름을 `.env`로 변경합니다. (또는 새 텍스트 문서를 만들어 `.env`로 저장)
 3. 메모장으로 `.env` 파일을 열고 로그인 정보와 블로그 이름을 입력합니다:
    ```env
    TISTORY_LOGIN_ID=본인_카카오_또는_티스토리_계정_아이디
    TISTORY_LOGIN_PW=본인_비밀번호
    TISTORY_BLOG_NAME=jeces
    OPENAI_API_KEY=발급받은_OpenAI_API_키 (선택)
-   HEADLESS=True
+   HEADLESS=False
    ```
+   > 💡 **Tip**: `HEADLESS=False`로 설정하면 브라우저가 직접 켜져서 로그인하고 글 쓰는 과정을 눈으로 확인할 수 있습니다!
 
 ### 2. 실행 방법
-- **더블 클릭 실행**: `run_auto_blogger.bat` 파일만 더블 클릭하면 필요한 라이브러리와 크롬 브라우저가 자동으로 설치되고 블로그 글이 즉시 포스팅됩니다.
-- **명령 프롬프트(CMD) 실행**:
-  ```cmd
-  pip install -r requirements.txt
-  playwright install chromium
-  python main.py
-  ```
+- **더블 클릭 실행**: `run_auto_blogger.bat` 파일을 더블 클릭합니다.
+  - 자동으로 필요한 패키지와 크롬 브라우저가 설치되며 실행 결과가 화면에 유지됩니다.
+
+---
+
+## ❓ Windows 실행 시 문제가 발생할 때 (Troubleshooting)
+
+1. **더블클릭해도 창이 그냥 켜졌다 꺼지는 경우**
+   - **원인**: 컴퓨터에 파이썬(Python)이 설치되어 있지 않거나 환경변수(PATH) 설정이 안 되어 있는 경우입니다.
+   - **해결책**: [python.org](https://www.python.org/downloads/)에서 Python 3.10 이상을 설치할 때 **`Add Python to PATH`** 옵션을 꼭 체크해 주세요!
+
+2. **`필수 환경변수가 설정되지 않았습니다` 오류가 나오는 경우**
+   - **해결책**: 프로젝트 폴더 안에 `.env` 파일이 존재하는지, `TISTORY_LOGIN_ID`와 `TISTORY_LOGIN_PW`가 제대로 작성되어 있는지 확인해 주세요.
 
 ---
 

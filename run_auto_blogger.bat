@@ -1,19 +1,55 @@
 @echo off
 chcp 65001 > nul
-echo ===================================================
-echo  티스토리 자동 블로그 작성 프로그램 (Playwright 브라우저 제어)
-echo ===================================================
+title 티스토리 자동 블로그 작성 프로그램
 
-:: 파이썬 패키지 및 Playwright 브라우저 설치 확인
+echo ===================================================
+echo   티스토리 자동 블로그 작성 프로그램 (Playwright)
+echo ===================================================
+echo.
+
+:: 1. 파이썬 설치 확인
+where python >nul 2>nul
+if %ERRORLEVEL% NEQ 0 (
+    echo [오류] 파이썬(Python)이 설치되어 있지 않거나 환경변수(PATH)에 등록되어 있지 않습니다.
+    echo https://www.python.org 에서 파이썬 설치 시 'Add Python to PATH'를 체크해 주세요.
+    echo.
+    pause
+    exit /b 1
+)
+
+echo [1/3] 파이썬 라이브러리 설치 확인 중...
 python -m pip install -r requirements.txt
-playwright install chromium
+if %ERRORLEVEL% NEQ 0 (
+    echo [오류] 라이브러리 설치 중 오류가 발생했습니다.
+    pause
+    exit /b 1
+)
 
-:: 메인 스크립트 실행
+echo.
+echo [2/3] Playwright 크롬 브라우저 설치 확인 중...
+playwright install chromium
+if %ERRORLEVEL% NEQ 0 (
+    echo [오류] Playwright 브라우저 설치 중 오류가 발생했습니다.
+    pause
+    exit /b 1
+)
+
+echo.
+echo [3/3] 블로그 자동 포스팅 프로그램 실행 중...
+echo.
 python main.py
 
+echo.
 if %ERRORLEVEL% NEQ 0 (
-    echo [오류] 작업 중 오류가 발생했습니다.
-    pause
+    echo ===================================================
+    echo  [실패] 작업 중 오류가 발생했습니다. 위 로그를 확인해 주세요.
+    echo ===================================================
 ) else (
-    echo [성공] 티스토리 포스팅이 성공적으로 등록되었습니다!
+    echo ===================================================
+    echo  [성공] 티스토리 포스팅이 성공적으로 등록되었습니다!
+    echo ===================================================
 )
+
+echo.
+echo 아무 키나 누르면 창이 닫힙니다...
+pause > nul

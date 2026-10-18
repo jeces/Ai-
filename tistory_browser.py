@@ -8,98 +8,66 @@ logger = logging.getLogger(__name__)
 class TistoryBrowser:
     def __init__(
         self,
-        login_id: str = "",
-        login_pw: str = "",
         blog_name: str = "jeces",
-        headless: bool = False,
-        use_cdp: bool = True,
         cdp_url: str = "http://localhost:9222",
-        user_data_dir: str = "./user_data"
+        use_cdp: bool = True
     ):
-        self.login_id = login_id
-        self.login_pw = login_pw
         self.blog_name = blog_name
-        self.headless = headless
-        self.use_cdp = use_cdp
         self.cdp_url = cdp_url
-        self.user_data_dir = os.path.abspath(user_data_dir)
+        self.use_cdp = use_cdp
 
     def publish_post(self, title: str, html_content: str, tags: str = "jeces,티스토리") -> dict:
         """
-        Playwright를 사용해 이미 로그인된 브라우저(CDP 연결 또는 Persistent Profile)를 제어하여 포스팅을 올립니다.
+        현재 켜져있는 크롬 브라우저(Port 9222)에 직접 연결하여 로그인되어 있는 상태 그대로 포스팅을 작성합니다.
+        새로운 브라우저 창을 띄우지 않고 기존 크롬 창/탭을 활용합니다.
         """
-        logger.info("Playwright 브라우저 자동화를 시작합니다...")
+        logger.info(f"열려있는 크롬 브라우저({self.cdp_url})에 원격 연결합니다...")
 
         with sync_playwright() as p:
             browser = None
-            context = None
-            page = None
-            is_cdp = False
+            try:
+                browser = p.chromium.connect_over_cdp(self.cdp_url)
+                logger.info("✅ 현재 열려있는 크롬 브라우저 연결 성공!")
+            except Exception as e:
+                err_msg = (
+                    "열려있는 크롬 브라우저 연결 실패!\n"
+                    "크롬이 디버깅 모드(포트 9222)로 켜져 있지 않습니다.\n"
+                    "start_chrome_debug.bat 파일이나 아래 명령어로 크롬을 먼저 실행하고 티스토리에 로그인해 주세요:\n"
+                    'chrome.exe --remote-debugging-port=9222'
+                )
+                logger.error(err_msg)
+                return {"success": False, "error": err_msg}
 
             try:
-                # 방법 1: 열려있는 크롬(CDP 9222 포트)에 원격 연결
-                if self.use_cdp:
-                    try:
-                        logger.info(f"이미 열려있는 크롬 브라우저({self.cdp_url})에 원격 연결을 시도합니다...")
-                        browser = p.chromium.connect_over_cdp(self.cdp_url)
-                        context = browser.contexts[0] if browser.contexts else browser.new_context()
-                        page = context.new_page() if not context.pages else context.pages[0]
-                        is_cdp = True
-                        logger.info("✅ 열려있는 크롬 브라우저 연결 성공!")
-                    except Exception as cdp_err:
-                        logger.warning(f"CDP 원격 크롬 연결 실패: {cdp_err}. 저장된 사용자 데이터 프로필로 브라우저를 실행합니다.")
+                context = browser.contexts[0] if browser.contexts else browser.new_context()
 
-                # 방법 2: 저장된 쿠키/프로필 세션으로 브라우저 실행 (Persistent Context)
+                # 이미 켜져있는 탭 중 티스토리 관련 탭 찾기, 없으면 활성 탭 사용 또는 새 탭 열기
+                page = None
+                for p_item in context.pages:
+                    if "tistory.com" in p_item.url:
+                        page = p_item
+                        logger.info(f"기존 열려있는 티스토리 탭({page.url})을 사용합니다.")
+                        break
+
                 if not page:
-                    logger.info(f"사용자 세션 데이터 경로({self.user_data_dir})로 크롬 브라우저를 엽니다...")
-                    context = p.chromium.launch_persistent_context(
-                        self.user_data_dir,
-                        headless=self.headless,
-                        channel="chrome",
-                        args=["--no-sandbox", "--disable-setuid-sandbox"]
-                    )
-                    page = context.new_page() if not context.pages else context.pages[0]
+                    page = context.pages[0] if context.pages else context.new_page()
 
-                # 1. 티스토리 글쓰기 에디터 페이지로 직접 이동
+                # 1. 티스토리 글쓰기 에디터 페이지로 이동
                 write_url = f"https://{self.blog_name}.tistory.com/manage/post"
-                logger.info(f"티스토리 글쓰기 에디터({write_url})로 이동합니다...")
+                logger.info(f"글쓰기 페이지({write_url})로 이동합니다...")
                 page.goto(write_url, wait_until="domcontentloaded")
                 page.wait_for_timeout(3000)
 
-                # 로그인 안 되어있어서 로그인 페이지로 튕긴 경우 자동 로그인 시도
+                # 로그인 확인
                 if "auth/login" in page.url or "accounts.kakao.com" in page.url:
-                    logger.info("현재 로그인되어 있지 않아 로그인 절차를 시도합니다...")
-                    if "tistory.com/auth/login" in page.url:
-                        kakao_btn = page.query_selector("a.btn_login.link_kakao") or page.query_selector("a:has-text('카카오계정으로 로그인')")
-                        if kakao_btn:
-                            kakao_btn.click()
-                            page.wait_for_timeout(2000)
+                    err_msg = (
+                        "현재 열려있는 크롬 창에서 티스토리에 로그인되어 있지 않습니다.\n"
+                        "열려있는 크롬 창에서 https://www.tistory.com 에 접속하여 로그인을 완료한 후 다시 실행해 주세요."
+                    )
+                    logger.error(err_msg)
+                    return {"success": False, "error": err_msg}
 
-                    if self.login_id and self.login_pw:
-                        id_selectors = ["input[name='loginId']", "#loginId--1", "input[type='email']", "input[type='text']"]
-                        pw_selectors = ["input[name='password']", "#password-1", "input[type='password']"]
-
-                        for s in id_selectors:
-                            el = page.query_selector(s)
-                            if el and el.is_visible():
-                                el.fill(self.login_id)
-                                break
-                        for s in pw_selectors:
-                            el = page.query_selector(s)
-                            if el and el.is_visible():
-                                el.fill(self.login_pw)
-                                break
-
-                        submit_btn = page.query_selector("button.btn_g.highlight.submit") or page.query_selector("button[type='submit']")
-                        if submit_btn:
-                            submit_btn.click()
-                            page.wait_for_timeout(4000)
-
-                    # 로그인 후 다시 글쓰기 페이지로 이동
-                    page.goto(write_url, wait_until="domcontentloaded")
-                    page.wait_for_timeout(3000)
-
-                # 경고 알림(임시저장 확인 등) 팝업 자동 수락
+                # 경고 알림(임시저장 등) 대화상자 수락
                 try:
                     page.on("dialog", lambda dialog: dialog.accept())
                 except Exception:
@@ -117,7 +85,7 @@ class TistoryBrowser:
                         page.wait_for_timeout(500)
 
                 # 3. 제목 및 HTML 본문 작성
-                logger.info("제목과 HTML 본문을 입력 중입니다...")
+                logger.info("제목과 HTML 본문을 입력합니다...")
                 title_input = page.query_selector("#post-title-inp") or page.query_selector("textarea.textarea_tit") or page.query_selector("input[placeholder*='제목']")
                 if title_input:
                     title_input.fill(title)
@@ -163,19 +131,9 @@ class TistoryBrowser:
                         final_submit_btn.click()
                         page.wait_for_timeout(3000)
 
-                logger.info("🎉 포스팅 작성이 성공적으로 완료되었습니다!")
-
-                # CDP로 직접 연 크롬인 경우 탭만 닫고 닫지 않음
-                if not is_cdp and context:
-                    context.close()
-
+                logger.info("🎉 현재 열려있는 크롬에서 티스토리 포스팅 작성이 완료되었습니다!")
                 return {"success": True, "message": "성공적으로 포스팅이 작성되었습니다."}
 
             except Exception as e:
-                logger.error(f"❌ 포스팅 진행 중 오류 발생: {e}")
-                if not is_cdp and context:
-                    try:
-                        context.close()
-                    except Exception:
-                        pass
+                logger.error(f"❌ 포스팅 작성 과정 중 오류 발생: {e}")
                 return {"success": False, "error": str(e)}

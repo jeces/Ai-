@@ -11,7 +11,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def run_auto_blogger():
-    logger.info("=== 티스토리 브라우저 자동화 블로그 작성 시작 ===")
+    logger.info("=== 티스토리 브라우저 원격제어 포스팅 시작 ===")
 
     missing_env = Config.validate()
     if missing_env:
@@ -27,16 +27,12 @@ def run_auto_blogger():
     title, content, tags = generator.generate_post()
     logger.info(f"생성된 포스팅 제목: {title}")
 
-    # 2. Playwright 브라우저 연동으로 포스팅 발행 (CDP 또는 Persistent Profile)
-    logger.info("열려있는 크롬 브라우저 제어를 통한 티스토리 포스팅 작성을 진행합니다...")
+    # 2. 열려있는 크롬(Port 9222)에 직접 연결하여 포스팅 발행
+    logger.info("열려있는 크롬 브라우저 원격제어를 통해 포스팅을 발행합니다...")
     tistory_browser = TistoryBrowser(
-        login_id=Config.TISTORY_LOGIN_ID,
-        login_pw=Config.TISTORY_LOGIN_PW,
         blog_name=Config.TISTORY_BLOG_NAME,
-        headless=Config.HEADLESS,
-        use_cdp=Config.USE_CDP,
         cdp_url=Config.CDP_URL,
-        user_data_dir=Config.USER_DATA_DIR
+        use_cdp=Config.USE_CDP
     )
 
     result = tistory_browser.publish_post(
@@ -48,7 +44,7 @@ def run_auto_blogger():
     if result.get("success"):
         logger.info(f"🎉 성공적으로 포스팅 작성이 완료되었습니다!")
     else:
-        logger.error(f"❌ 포스팅 실패: {result.get('error')}")
+        logger.error(f"❌ 포스팅 실패:\n{result.get('error')}")
         sys.exit(1)
 
 if __name__ == "__main__":

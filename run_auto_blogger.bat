@@ -2,7 +2,7 @@
 title Tistory Auto Blogger
 
 echo ===================================================
-echo   Tistory Auto Blogger (Playwright)
+echo   Tistory Auto Blogger (CDP Remote Control)
 echo ===================================================
 echo.
 
@@ -36,17 +36,26 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
+:: 3. Check if Chrome debugging port 9222 is active
 echo.
-echo [2/3] Installing Playwright Chromium browser...
-python -m playwright install chromium
+echo [2/3] Checking if debugging Chrome (Port 9222) is running...
+netstat -ano | findstr 9222 >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] Failed to install Playwright browser.
-    pause
-    exit /b 1
+    echo [INFO] Chrome debugging port 9222 is not detected. Starting Chrome...
+    if exist "C:\Program Files\Google\Chrome\Application\chrome.exe" (
+        start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="%LOCALAPPDATA%\Google\Chrome\User Data"
+    ) else if exist "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" (
+        start "" "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="%LOCALAPPDATA%\Google\Chrome\User Data"
+    ) else (
+        echo [WARNING] Could not auto-start Chrome. Please start Chrome with --remote-debugging-port=9222
+    )
+    timeout /t 3 /nobreak >nul
+) else (
+    echo [OK] Connected to existing Chrome instance on port 9222.
 )
 
 echo.
-echo [3/3] Running Tistory Auto Blogger...
+echo [3/3] Running Tistory Auto Blogger on opened Chrome...
 echo.
 python main.py
 

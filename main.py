@@ -11,7 +11,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def run_auto_blogger():
-    logger.info("=== 티스토리 브라우저 원격제어 포스팅 시작 ===")
+    logger.info("=== 티스토리 브라우저 자동 포스팅 프로그램 시작 ===")
 
     missing_env = Config.validate()
     if missing_env:
@@ -27,12 +27,12 @@ def run_auto_blogger():
     title, content, tags = generator.generate_post()
     logger.info(f"생성된 포스팅 제목: {title}")
 
-    # 2. 열려있는 크롬(Port 9222)에 직접 연결하여 포스팅 발행
-    logger.info("열려있는 크롬 브라우저 원격제어를 통해 포스팅을 발행합니다...")
+    # 2. 브라우저 오픈 ➔ 수동 로그인 대기 ➔ 자동 포스팅
+    logger.info("크롬 브라우저를 열어 포스팅 작성을 진행합니다...")
     tistory_browser = TistoryBrowser(
         blog_name=Config.TISTORY_BLOG_NAME,
-        cdp_url=Config.CDP_URL,
-        use_cdp=Config.USE_CDP
+        headless=False,
+        user_data_dir=Config.USER_DATA_DIR
     )
 
     result = tistory_browser.publish_post(

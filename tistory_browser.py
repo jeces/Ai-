@@ -9,72 +9,90 @@ class TistoryBrowser:
     def __init__(
         self,
         blog_name: str = "jeces",
-        cdp_url: str = "http://localhost:9222",
-        use_cdp: bool = True
+        headless: bool = False,
+        user_data_dir: str = "./user_data"
     ):
         self.blog_name = blog_name
-        self.cdp_url = cdp_url
-        self.use_cdp = use_cdp
+        self.headless = headless
+        self.user_data_dir = os.path.abspath(user_data_dir)
 
     def publish_post(self, title: str, html_content: str, tags: str = "jeces,티스토리") -> dict:
         """
-        현재 켜져있는 크롬 브라우저(Port 9222)에 직접 연결하여 로그인되어 있는 상태 그대로 포스팅을 작성합니다.
-        새로운 브라우저 창을 띄우지 않고 기존 크롬 창/탭을 활용합니다.
+        1. 크롬 브라우저 창을 엽니다.
+        2. 티스토리/카카오 로그인 페이지로 이동하여 사용자가 직접 로그인할 수 있게 기다립니다.
+        3. 로그인 완료가 감지되면 자동으로 글쓰기 페이지로 이동하여 제목, 이미지/HTML 본문, 태그를 입력하고 발행합니다.
         """
-        logger.info(f"열려있는 크롬 브라우저({self.cdp_url})에 원격 연결합니다...")
+        logger.info("Playwright 크롬 브라우저를 오픈합니다...")
 
         with sync_playwright() as p:
-            browser = None
             try:
-                browser = p.chromium.connect_over_cdp(self.cdp_url)
-                logger.info("✅ 현재 열려있는 크롬 브라우저 연결 성공!")
-            except Exception as e:
-                err_msg = (
-                    "열려있는 크롬 브라우저 연결 실패!\n"
-                    "크롬이 디버깅 모드(포트 9222)로 켜져 있지 않습니다.\n"
-                    "start_chrome_debug.bat 파일이나 아래 명령어로 크롬을 먼저 실행하고 티스토리에 로그인해 주세요:\n"
-                    'chrome.exe --remote-debugging-port=9222'
+                # 사용자 세션 쿠키가 저장되는 크롬 브라우저 실행
+                context = p.chromium.launch_persistent_context(
+                    self.user_data_dir,
+                    headless=False,  # 사용자가 눈으로 보고 로그인해야 하므로 항상 창을 띄움
+                    channel="chrome",
+                    viewport={"width": 1280, "height": 850},
+                    args=["--no-sandbox", "--disable-setuid-sandbox"]
                 )
-                logger.error(err_msg)
-                return {"success": False, "error": err_msg}
+            except Exception as e:
+                logger.warning(f"시스템 설치 크롬 실행 실패: {e}. 기본 Chromium으로 실행합니다.")
+                context = p.chromium.launch_persistent_context(
+                    self.user_data_dir,
+                    headless=False,
+                    viewport={"width": 1280, "height": 850},
+                    args=["--no-sandbox", "--disable-setuid-sandbox"]
+                )
+
+            page = context.pages[0] if context.pages else context.new_page()
 
             try:
-                context = browser.contexts[0] if browser.contexts else browser.new_context()
+                # 1. 로그인 여부 확인 및 수동 로그인 유도
+                check_url = f"https://{self.blog_name}.tistory.com/manage/post"
+                logger.info(f"블로그 접근 확인 중... ({check_url})")
+                page.goto(check_url, wait_until="domcontentloaded")
+                page.wait_for_timeout(2000)
 
-                # 이미 켜져있는 탭 중 티스토리 관련 탭 찾기, 없으면 활성 탭 사용 또는 새 탭 열기
-                page = None
-                for p_item in context.pages:
-                    if "tistory.com" in p_item.url:
-                        page = p_item
-                        logger.info(f"기존 열려있는 티스토리 탭({page.url})을 사용합니다.")
-                        break
+                if "auth/login" in page.url or "accounts.kakao.com" in page.url or "tistory.com/auth" in page.url:
+                    login_url = "https://www.tistory.com/auth/login"
+                    logger.info("===================================================")
+                    logger.info("🔑 [로그인 필요] 화면에 열린 크롬 브라우저 창에서 카카오/티스토리 로그인을 직접 완료해 주세요.")
+                    logger.info("===================================================")
 
-                if not page:
-                    page = context.pages[0] if context.pages else context.new_page()
+                    page.goto(login_url, wait_until="domcontentloaded")
 
-                # 1. 티스토리 글쓰기 에디터 페이지로 이동
+                    # 사용자가 로그인을 완료할 때까지 대기 (최대 180초)
+                    logged_in = False
+                    start_time = time.time()
+                    while time.time() - start_time < 180:
+                        try:
+                            current_url = page.url
+                            if "tistory.com" in current_url and "auth/login" not in current_url and "accounts.kakao" not in current_url:
+                                logged_in = True
+                                logger.info("✅ 로그인 완료가 감지되었습니다! 자동 포스팅을 시작합니다.")
+                                break
+                        except Exception:
+                            pass
+                        time.sleep(2)
+
+                    if not logged_in:
+                        logger.error("❌ 로그인 시간이 초과되었습니다 (3분 제한).")
+                        context.close()
+                        return {"success": False, "error": "로그인 시간 초과 (3분 내에 로그인을 완료해 주세요)"}
+
+                # 2. 로그인 완료 후 글쓰기 에디터 페이지로 이동
                 write_url = f"https://{self.blog_name}.tistory.com/manage/post"
-                logger.info(f"글쓰기 페이지({write_url})로 이동합니다...")
+                logger.info(f"글쓰기 에디터 페이지({write_url})로 이동 중...")
                 page.goto(write_url, wait_until="domcontentloaded")
                 page.wait_for_timeout(3000)
 
-                # 로그인 확인
-                if "auth/login" in page.url or "accounts.kakao.com" in page.url:
-                    err_msg = (
-                        "현재 열려있는 크롬 창에서 티스토리에 로그인되어 있지 않습니다.\n"
-                        "열려있는 크롬 창에서 https://www.tistory.com 에 접속하여 로그인을 완료한 후 다시 실행해 주세요."
-                    )
-                    logger.error(err_msg)
-                    return {"success": False, "error": err_msg}
-
-                # 경고 알림(임시저장 등) 대화상자 수락
+                # 경고 알림(임시저장 알림 등) 팝업 수락
                 try:
                     page.on("dialog", lambda dialog: dialog.accept())
                 except Exception:
                     pass
 
-                # 2. 에디터 모드를 HTML 모드로 변경
-                logger.info("HTML 에디터 모드로 전환합니다...")
+                # 3. 에디터 모드를 HTML 모드로 전환
+                logger.info("에디터 모드를 HTML 모드로 변경합니다...")
                 mode_btn = page.query_selector("#editor-mode-select") or page.query_selector("button:has-text('기본모드')")
                 if mode_btn:
                     mode_btn.click()
@@ -84,8 +102,8 @@ class TistoryBrowser:
                         html_mode_opt.click()
                         page.wait_for_timeout(500)
 
-                # 3. 제목 및 HTML 본문 작성
-                logger.info("제목과 HTML 본문을 입력합니다...")
+                # 4. 제목 및 HTML 본문 자동 작성
+                logger.info("제목과 본문을 입력하는 중입니다...")
                 title_input = page.query_selector("#post-title-inp") or page.query_selector("textarea.textarea_tit") or page.query_selector("input[placeholder*='제목']")
                 if title_input:
                     title_input.fill(title)
@@ -108,7 +126,7 @@ class TistoryBrowser:
                     }
                 """, html_content)
 
-                # 4. 태그 입력
+                # 5. 태그 입력
                 if tags:
                     logger.info("태그를 입력합니다...")
                     tag_input = page.query_selector("#tagText") or page.query_selector("input[placeholder*='태그']")
@@ -119,8 +137,8 @@ class TistoryBrowser:
                             tag_input.press("Enter")
                             page.wait_for_timeout(300)
 
-                # 5. 발행 버튼 클릭
-                logger.info("포스팅 발행 버튼을 클릭합니다...")
+                # 6. 발행 버튼 자동 클릭
+                logger.info("발행 버튼을 클릭합니다...")
                 publish_btn = page.query_selector("#confirm-open-btn") or page.query_selector("button.btn_perform") or page.query_selector("button:has-text('발행')")
                 if publish_btn:
                     publish_btn.click()
@@ -129,11 +147,16 @@ class TistoryBrowser:
                     final_submit_btn = page.query_selector("#published-btn") or page.query_selector("button.btn_register") or page.query_selector("button:has-text('공개발행')")
                     if final_submit_btn:
                         final_submit_btn.click()
-                        page.wait_for_timeout(3000)
+                        page.wait_for_timeout(4000)
 
-                logger.info("🎉 현재 열려있는 크롬에서 티스토리 포스팅 작성이 완료되었습니다!")
+                logger.info("🎉 포스팅 발행이 완료되었습니다! 다음 실행 시에는 세션이 유지되어 자동으로 작성됩니다.")
+                context.close()
                 return {"success": True, "message": "성공적으로 포스팅이 작성되었습니다."}
 
             except Exception as e:
-                logger.error(f"❌ 포스팅 작성 과정 중 오류 발생: {e}")
+                logger.error(f"❌ 포스팅 작성 도중 오류가 발생했습니다: {e}")
+                try:
+                    context.close()
+                except Exception:
+                    pass
                 return {"success": False, "error": str(e)}

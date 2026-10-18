@@ -27,11 +27,13 @@ def run_auto_blogger():
     title, content, tags = generator.generate_post()
     logger.info(f"생성된 포스팅 제목: {title}")
 
-    # 2. 브라우저 오픈 ➔ 수동 로그인 대기 ➔ 자동 포스팅
-    logger.info("크롬 브라우저를 열어 포스팅 작성을 진행합니다...")
+    # 2. 브라우저 연동 및 자동 포스팅
+    logger.info("크롬 브라우저를 오픈하여 포스팅을 진행합니다...")
     tistory_browser = TistoryBrowser(
         blog_name=Config.TISTORY_BLOG_NAME,
-        headless=False,
+        headless=Config.HEADLESS,
+        use_cdp=Config.USE_CDP,
+        cdp_url=Config.CDP_URL,
         user_data_dir=Config.USER_DATA_DIR
     )
 

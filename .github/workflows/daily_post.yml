@@ -25,11 +25,10 @@ jobs:
           playwright install chromium
           playwright install-deps
 
-      - name: Run Auto Blogger (Browser Automation)
+      - name: Run Auto Blogger
         env:
-          TISTORY_LOGIN_ID: ${{ secrets.TISTORY_LOGIN_ID }}
-          TISTORY_LOGIN_PW: ${{ secrets.TISTORY_LOGIN_PW }}
           TISTORY_BLOG_NAME: ${{ secrets.TISTORY_BLOG_NAME }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           HEADLESS: "True"
+          USE_CDP: "False"
         run: python main.py

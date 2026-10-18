@@ -34,6 +34,7 @@ def test_tistory_browser_manual_login_publish_success(mock_playwright):
 
     mock_element = MagicMock()
     mock_element.is_visible.return_value = True
+    mock_page.wait_for_selector.return_value = mock_element
     mock_page.query_selector.return_value = mock_element
 
     tb = TistoryBrowser(blog_name="jeces", headless=False)

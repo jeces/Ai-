@@ -16,6 +16,9 @@ class Config:
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
 
+    HEADLESS = os.getenv("HEADLESS", "False").lower() == "true"
+    USE_CDP = os.getenv("USE_CDP", "False").lower() == "true"
+    CDP_URL = os.getenv("CDP_URL", "http://localhost:9222").strip()
     USER_DATA_DIR = os.getenv("USER_DATA_DIR", "./user_data").strip()
 
     @classmethod

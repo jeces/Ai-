@@ -1,4 +1,4 @@
-name: Daily Tistory Auto Post
+name: Daily Tistory Auto Post (Playwright)
 
 on:
   schedule:
@@ -18,16 +18,18 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
+      - name: Install dependencies & Playwright
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install -r requirements.txt
+          playwright install chromium
+          playwright install-deps
 
-      - name: Run Auto Blogger
+      - name: Run Auto Blogger (Browser Automation)
         env:
-          TISTORY_ACCESS_TOKEN: ${{ secrets.TISTORY_ACCESS_TOKEN }}
+          TISTORY_LOGIN_ID: ${{ secrets.TISTORY_LOGIN_ID }}
+          TISTORY_LOGIN_PW: ${{ secrets.TISTORY_LOGIN_PW }}
           TISTORY_BLOG_NAME: ${{ secrets.TISTORY_BLOG_NAME }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          TISTORY_CATEGORY_ID: ${{ secrets.TISTORY_CATEGORY_ID }}
-          TISTORY_VISIBILITY: ${{ secrets.TISTORY_VISIBILITY }}
+          HEADLESS: "True"
         run: python main.py

@@ -2,7 +2,7 @@ import sys
 import logging
 from config import Config
 from content_generator import ContentGenerator
-from tistory_api import TistoryAPI
+from tistory_browser import TistoryBrowser
 
 logging.basicConfig(
     level=logging.INFO,
@@ -11,40 +11,40 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def run_auto_blogger():
-    logger.info("=== 티스토리 자동 블로그 작성 프로그램 시작 ===")
+    logger.info("=== 티스토리 브라우저 자동화 블로그 작성 시작 ===")
 
     missing_env = Config.validate()
     if missing_env:
         logger.error(f"필수 환경변수가 설정되지 않았습니다: {', '.join(missing_env)}")
-        logger.error(".env 파일 또는 환경 변수를 확인해 주세요.")
+        logger.error(".env 파일에 TISTORY_LOGIN_ID, TISTORY_LOGIN_PW, TISTORY_BLOG_NAME을 설정해 주세요.")
         sys.exit(1)
 
     # 1. 콘텐츠 생성
-    logger.info("블로그 글 콘텐츠를 생성 중입니다...")
+    logger.info("블로그 포스팅 콘텐츠를 생성 중입니다...")
     generator = ContentGenerator(
         api_key=Config.OPENAI_API_KEY,
         model=Config.OPENAI_MODEL
     )
     title, content, tags = generator.generate_post()
-    logger.info(f"생성된 글 제목: {title}")
+    logger.info(f"생성된 포스팅 제목: {title}")
 
-    # 2. 티스토리 업로드
-    logger.info("티스토리에 글을 발행 중입니다...")
-    tistory = TistoryAPI(
-        access_token=Config.TISTORY_ACCESS_TOKEN,
-        blog_name=Config.TISTORY_BLOG_NAME
+    # 2. Playwright 브라우저 자동화로 포스팅 발행
+    logger.info("브라우저 원격 제어를 통한 티스토리 포스팅 작성을 진행합니다...")
+    tistory_browser = TistoryBrowser(
+        login_id=Config.TISTORY_LOGIN_ID,
+        login_pw=Config.TISTORY_LOGIN_PW,
+        blog_name=Config.TISTORY_BLOG_NAME,
+        headless=Config.HEADLESS
     )
 
-    result = tistory.write_post(
+    result = tistory_browser.publish_post(
         title=title,
-        content=content,
-        category_id=Config.TISTORY_CATEGORY_ID,
-        visibility=Config.TISTORY_VISIBILITY,
-        tag=tags
+        html_content=content,
+        tags=tags
     )
 
     if result.get("success"):
-        logger.info(f"🎉 성공적으로 포스팅이 완료되었습니다! URL: {result.get('url')}")
+        logger.info(f"🎉 성공적으로 포스팅 작성이 완료되었습니다!")
     else:
         logger.error(f"❌ 포스팅 실패: {result.get('error')}")
         sys.exit(1)

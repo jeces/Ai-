@@ -1,24 +1,26 @@
 import os
 from dotenv import load_dotenv
 
-# .env 파일이 존재하면 로드
 load_dotenv()
 
 class Config:
-    TISTORY_ACCESS_TOKEN = os.getenv("TISTORY_ACCESS_TOKEN", "").strip()
-    TISTORY_BLOG_NAME = os.getenv("TISTORY_BLOG_NAME", "").strip()
-    TISTORY_CATEGORY_ID = os.getenv("TISTORY_CATEGORY_ID", "0").strip()
-    TISTORY_VISIBILITY = os.getenv("TISTORY_VISIBILITY", "3").strip() # 3: 공개, 0: 비공개
+    TISTORY_LOGIN_ID = os.getenv("TISTORY_LOGIN_ID", "").strip()
+    TISTORY_LOGIN_PW = os.getenv("TISTORY_LOGIN_PW", "").strip()
+    TISTORY_BLOG_NAME = os.getenv("TISTORY_BLOG_NAME", "").strip() or "jeces"
 
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
 
+    HEADLESS = os.getenv("HEADLESS", "True").lower() == "true"
+
     @classmethod
     def validate(cls):
         missing = []
-        if not cls.TISTORY_ACCESS_TOKEN:
-            missing.append("TISTORY_ACCESS_TOKEN")
-        if not cls.TISTORY_BLOG_NAME:
+        if not os.getenv("TISTORY_LOGIN_ID", "").strip():
+            missing.append("TISTORY_LOGIN_ID")
+        if not os.getenv("TISTORY_LOGIN_PW", "").strip():
+            missing.append("TISTORY_LOGIN_PW")
+        if not os.getenv("TISTORY_BLOG_NAME", "").strip():
             missing.append("TISTORY_BLOG_NAME")
 
         return missing

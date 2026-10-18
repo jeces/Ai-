@@ -1,11 +1,14 @@
 @echo off
 chcp 65001 > nul
 echo ===================================================
-echo  티스토리 자동 블로그 작성 프로그램 (Windows)
+echo  티스토리 자동 블로그 작성 프로그램 (Playwright 브라우저 제어)
 echo ===================================================
 
-:: 파이썬 패키지 설치 확인 및 실행
+:: 파이썬 패키지 및 Playwright 브라우저 설치 확인
 python -m pip install -r requirements.txt
+playwright install chromium
+
+:: 메인 스크립트 실행
 python main.py
 
 if %ERRORLEVEL% NEQ 0 (

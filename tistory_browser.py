@@ -85,15 +85,38 @@ class TistoryBrowser:
                     # 로그인 완료 자동 감지 (최대 180초 대기)
                     logged_in = False
                     start_time = time.time()
+                    last_log_time = 0
+
                     while time.time() - start_time < 180:
+                        now = time.time()
+                        if now - last_log_time >= 5:
+                            logger.info("⏳ 로그인 완료 감지 대기 중... (브라우저에서 로그인을 진행해 주세요)")
+                            last_log_time = now
+
                         try:
-                            current_url = page.url
-                            if "tistory.com" in current_url and "auth/login" not in current_url and "accounts.kakao" not in current_url:
-                                logged_in = True
-                                logger.info("🎉 로그인 성공이 자동 감지되었습니다! 포스팅 작성을 시작합니다.")
+                            # 1. context 내의 모든 페이지 URL 점검
+                            for p in context.pages:
+                                u = p.url
+                                if "tistory.com" in u and "auth/login" not in u and "accounts.kakao" not in u:
+                                    logged_in = True
+                                    logger.info(f"🎉 로그인 성공 감지! (감지 URL: {u})")
+                                    page = p
+                                    break
+
+                            if logged_in:
                                 break
-                        except Exception:
-                            pass
+
+                            # 2. 쿠키 기반 로그인 확인
+                            cookies = context.cookies()
+                            cookie_names = [c.get("name", "") for c in cookies]
+                            if "TSSESSION" in cookie_names or "_T_AUTH" in cookie_names or "TSID" in cookie_names:
+                                logged_in = True
+                                logger.info("🎉 로그인 쿠키(TSSESSION/_T_AUTH)가 확인되었습니다!")
+                                break
+
+                        except Exception as e:
+                            logger.debug(f"로그인 감지 중 예외: {e}")
+
                         time.sleep(1.5)
 
                     if not logged_in:
@@ -106,12 +129,23 @@ class TistoryBrowser:
                 # 2. 글쓰기 에디터 페이지로 이동
                 write_url = f"https://{self.blog_name}.tistory.com/manage/post"
                 logger.info(f"글쓰기 에디터({write_url})로 이동 중...")
+
+                # 브라우저 다이얼로그(alert/confirm) 자동 승인 설정
+                try:
+                    page.on("dialog", lambda dialog: dialog.accept())
+                except Exception:
+                    pass
+
                 page.goto(write_url, wait_until="domcontentloaded")
                 page.wait_for_timeout(2000)
 
-                # 경고 알림(임시저장 확인 등) 자동 승인
+                # 모달 팝업(임시저장 복구 등) 처리
                 try:
-                    page.on("dialog", lambda dialog: dialog.accept())
+                    cancel_btn = page.query_selector("button:has-text('취소'), .btn_cancel, button:has-text('아니오')")
+                    if cancel_btn and cancel_btn.is_visible():
+                        cancel_btn.click()
+                        logger.info("임시 저장 복구 팝업(취소)을 클릭했습니다.")
+                        page.wait_for_timeout(500)
                 except Exception:
                     pass
 
@@ -126,6 +160,14 @@ class TistoryBrowser:
                         if html_mode_opt:
                             html_mode_opt.click()
                             page.wait_for_timeout(500)
+                            # 모드 변경 확인 팝업 시
+                            try:
+                                alert_ok = page.query_selector("button:has-text('확인')")
+                                if alert_ok and alert_ok.is_visible():
+                                    alert_ok.click()
+                                    page.wait_for_timeout(500)
+                            except Exception:
+                                pass
                 except Exception as e:
                     logger.warning(f"에디터 모드 전환 버튼 탐색 경고 (기본 모드로 계속 진행): {e}")
 

@@ -33,7 +33,9 @@ def test_tistory_browser_publish_post_success(mock_playwright):
     mock_browser.new_context.return_value = mock_context
     mock_context.new_page.return_value = mock_page
 
-    mock_page.query_selector.return_value = MagicMock()
+    mock_element = MagicMock()
+    mock_element.is_visible.return_value = True
+    mock_page.query_selector.return_value = mock_element
 
     tb = TistoryBrowser(login_id="test_id", login_pw="test_pw", blog_name="jeces", headless=True)
     result = tb.publish_post(title="테스트 제목", html_content="<p>테스트 본문</p>", tags="테스트,태그")

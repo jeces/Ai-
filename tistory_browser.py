@@ -67,7 +67,7 @@ class TistoryBrowser:
 
             try:
                 # 1. 로그인 여부 확인 및 자동 감지
-                check_url = f"https://{self.blog_name}.tistory.com/manage/post"
+                check_url = f"https://{self.blog_name}.tistory.com/manage/newpost"
                 logger.info(f"티스토리 글쓰기 페이지 접근 확인 중... ({check_url})")
                 page.goto(check_url, wait_until="domcontentloaded")
                 page.wait_for_timeout(2000)
@@ -121,7 +121,7 @@ class TistoryBrowser:
                         return {"success": False, "error": error_msg}
 
                 # 2. 글쓰기 에디터 페이지로 이동
-                write_url = f"https://{self.blog_name}.tistory.com/manage/post"
+                write_url = f"https://{self.blog_name}.tistory.com/manage/newpost"
                 logger.info(f"글쓰기 에디터({write_url})로 이동 중...")
 
                 # 브라우저 다이얼로그(임시저장 복구 확인 등) 거절 처리로 기존 저장글 이어쓰기 방지

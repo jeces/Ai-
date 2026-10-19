@@ -152,11 +152,11 @@ class TistoryBrowser:
                 # 3. 에디터 모드를 HTML 모드로 변경 (명시적 요소 대기)
                 logger.info("에디터 모드를 HTML 모드로 전환합니다...")
                 try:
-                    mode_btn = page.wait_for_selector("#editor-mode-select, button:has-text('기본모드')", timeout=8000)
+                    mode_btn = page.wait_for_selector("#editor-mode-select, button:has-text('기본모드'), #mceu_18-open", timeout=8000)
                     if mode_btn:
                         mode_btn.click()
                         page.wait_for_timeout(500)
-                        html_mode_opt = page.wait_for_selector("li:has-text('HTML'), button:has-text('HTML')", timeout=5000)
+                        html_mode_opt = page.wait_for_selector("li:has-text('HTML'), button:has-text('HTML'), span:has-text('HTML')", timeout=5000)
                         if html_mode_opt:
                             html_mode_opt.click()
                             page.wait_for_timeout(500)
@@ -173,7 +173,7 @@ class TistoryBrowser:
 
                 # 4. 제목 입력 (명시적 대기 및 에러 검증)
                 logger.info("제목을 입력합니다...")
-                title_selector = "#post-title-inp, textarea.textarea_tit, input[placeholder*='제목']"
+                title_selector = "#post-title-inp, textarea.textarea_tit, input[placeholder*='제목'], textarea[placeholder*='제목']"
                 try:
                     title_input = page.wait_for_selector(title_selector, timeout=10000)
                     if title_input:
@@ -190,15 +190,33 @@ class TistoryBrowser:
                 logger.info("HTML 본문을 입력합니다...")
                 page.evaluate("""
                     (content) => {
+                        // 1. CodeMirror (HTML mode)
                         const cm = document.querySelector('.CodeMirror');
                         if (cm && cm.CodeMirror) {
                             cm.CodeMirror.setValue(content);
                             return;
                         }
+                        // 2. TinyMCE activeEditor
                         if (window.tinymce && window.tinymce.activeEditor) {
                             window.tinymce.activeEditor.setContent(content);
                             return;
                         }
+                        // 3. TinyMCE iframe
+                        const iframe = document.querySelector('iframe#tinymce_ifr, iframe[title*="Rich Text Area"], iframe.mce-edit-area');
+                        if (iframe && iframe.contentDocument) {
+                            const body = iframe.contentDocument.querySelector('body');
+                            if (body) {
+                                body.innerHTML = content;
+                                return;
+                            }
+                        }
+                        // 4. Contenteditable area
+                        const ce = document.querySelector('[contenteditable="true"]');
+                        if (ce) {
+                            ce.innerHTML = content;
+                            return;
+                        }
+                        // 5. Fallback textarea
                         const textarea = document.querySelector('textarea.CodeMirror-textarea') || document.querySelector('#editor-contents');
                         if (textarea) {
                             textarea.value = content;
@@ -225,16 +243,21 @@ class TistoryBrowser:
                 # 7. 발행 버튼 클릭
                 logger.info("발행 버튼을 클릭합니다...")
                 try:
-                    publish_btn = page.wait_for_selector("#confirm-open-btn, button.btn_perform, button:has-text('발행')", timeout=10000)
+                    # 1단계: 에디터 상단/하단의 완료/발행 버튼
+                    publish_btn_selector = "#confirm-open-btn, button.btn_perform, button:has-text('발행'), button:has-text('완료'), button.btn_submit, #open-btn"
+                    publish_btn = page.wait_for_selector(publish_btn_selector, timeout=10000)
                     if publish_btn:
                         publish_btn.click()
+                        logger.info("1단계 완료/발행 버튼을 클릭했습니다.")
                         page.wait_for_timeout(1500)
 
-                        final_submit_btn = page.wait_for_selector("#published-btn, button.btn_register, button:has-text('공개발행')", timeout=10000)
+                        # 2단계: 공개발행 레이어/패널 내의 최종 발행 버튼
+                        final_submit_selector = "#published-btn, button.btn_register, button:has-text('공개발행'), button:has-text('발행하기'), button:has-text('저장')"
+                        final_submit_btn = page.wait_for_selector(final_submit_selector, timeout=10000)
                         if final_submit_btn:
                             final_submit_btn.click()
                             page.wait_for_timeout(4000)
-                            logger.info("✅ 공개발행 완료 버튼 클릭 성공!")
+                            logger.info("✅ 최종 공개발행 완료 버튼 클릭 성공!")
                 except Exception as e:
                     err_msg = f"발행 버튼 클릭 중 오류가 발생했습니다: {e}"
                     logger.error(f"❌ {err_msg}")

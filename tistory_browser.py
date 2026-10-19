@@ -151,19 +151,19 @@ class TistoryBrowser:
                 except Exception:
                     pass
 
-                # 3. 에디터 모드를 HTML 모드로 변경 (wait_for_selector로 요소 렌더링 명시적 대기)
+                # 3. 에디터 모드를 HTML 모드로 변경
                 logger.info("에디터 모드를 HTML 모드로 전환합니다...")
                 try:
                     mode_btn = page.wait_for_selector("#editor-mode-select, button:has-text('기본모드'), #mceu_18-open, .btn_mode", timeout=12000)
                     if mode_btn:
                         mode_btn.click()
                         page.wait_for_timeout(600)
-                        html_mode_opt = page.wait_for_selector("li:has-text('HTML'), button:has-text('HTML'), span:has-text('HTML')", timeout=5000)
+                        html_mode_opt = page.wait_for_selector("li:has-text('HTML'), button:has-text('HTML'), span:has-text('HTML'), #editor-mode-select-html", timeout=5000)
                         if html_mode_opt:
                             html_mode_opt.click()
-                            page.wait_for_timeout(800)
+                            page.wait_for_timeout(1000)
                             try:
-                                alert_ok = page.query_selector("button:has-text('확인')")
+                                alert_ok = page.query_selector("button:has-text('확인'), .btn_confirm, .confirm")
                                 if alert_ok and alert_ok.is_visible():
                                     alert_ok.click()
                                     page.wait_for_timeout(500)
@@ -179,9 +179,12 @@ class TistoryBrowser:
                     title_input = page.wait_for_selector(title_selector, timeout=10000)
                     if title_input:
                         title_input.click()
+                        title_input.focus()
                         title_input.fill("")
                         page.wait_for_timeout(200)
                         title_input.fill(title)
+                        title_input.dispatch_event("input")
+                        title_input.dispatch_event("change")
                         logger.info("✅ 제목 입력 성공!")
                 except Exception as e:
                     err_msg = f"제목 입력란을 찾을 수 없습니다: {e}"
@@ -194,47 +197,45 @@ class TistoryBrowser:
                 logger.info("HTML 본문을 작성합니다 (기존 내용 초기화 후 주입)...")
                 inserted = page.evaluate("""
                     (content) => {
+                        let success = false;
+
                         // 1. CodeMirror 에디터 (HTML 모드)
                         const cm = document.querySelector('.CodeMirror');
                         if (cm && cm.CodeMirror) {
                             cm.CodeMirror.setValue('');
                             cm.CodeMirror.setValue(content);
-                            if (typeof cm.CodeMirror.save === 'function') {
-                                cm.CodeMirror.save();
-                            }
-                            if (typeof cm.CodeMirror.refresh === 'function') {
-                                cm.CodeMirror.refresh();
-                            }
-                            return true;
+                            if (typeof cm.CodeMirror.save === 'function') cm.CodeMirror.save();
+                            if (typeof cm.CodeMirror.refresh === 'function') cm.CodeMirror.refresh();
+                            success = true;
                         }
 
-                        // 2. TinyMCE activeEditor
+                        // 2. ProseMirror / Contenteditable 에디터 (기본 모드 또는 블록 에디터)
+                        const ce = document.querySelector('.ProseMirror, [contenteditable="true"], .tt-content');
+                        if (ce) {
+                            ce.focus();
+                            ce.innerHTML = content;
+                            ce.dispatchEvent(new Event('input', { bubbles: true }));
+                            ce.dispatchEvent(new Event('change', { bubbles: true }));
+                            ce.dispatchEvent(new Event('keyup', { bubbles: true }));
+                            success = true;
+                        }
+
+                        // 3. TinyMCE activeEditor
                         if (window.tinymce && window.tinymce.activeEditor) {
                             window.tinymce.activeEditor.setContent('');
                             window.tinymce.activeEditor.setContent(content);
-                            if (typeof window.tinymce.activeEditor.save === 'function') {
-                                window.tinymce.activeEditor.save();
-                            }
-                            return true;
+                            if (typeof window.tinymce.activeEditor.save === 'function') window.tinymce.activeEditor.save();
+                            success = true;
                         }
 
-                        // 3. TinyMCE iframe
+                        // 4. TinyMCE iframe
                         const iframe = document.querySelector('iframe#tinymce_ifr, iframe[title*="Rich Text Area"], iframe.mce-edit-area');
                         if (iframe && iframe.contentDocument) {
                             const body = iframe.contentDocument.querySelector('body');
                             if (body) {
                                 body.innerHTML = content;
-                                return true;
+                                success = true;
                             }
-                        }
-
-                        // 4. Contenteditable area / ProseMirror
-                        const ce = document.querySelector('[contenteditable="true"], .tt-content, .ProseMirror');
-                        if (ce) {
-                            ce.innerHTML = content;
-                            ce.dispatchEvent(new Event('input', { bubbles: true }));
-                            ce.dispatchEvent(new Event('change', { bubbles: true }));
-                            return true;
                         }
 
                         // 5. Fallback textarea
@@ -243,23 +244,40 @@ class TistoryBrowser:
                             textarea.value = content;
                             textarea.dispatchEvent(new Event('input', { bubbles: true }));
                             textarea.dispatchEvent(new Event('change', { bubbles: true }));
-                            return true;
+                            success = true;
                         }
-                        return false;
+
+                        return success;
                     }
                 """, html_content)
+
+                # 클립보드 붙여넣기 보조 방식
+                if not inserted:
+                    try:
+                        logger.info("자바스크립트 직접 주입 실패 -> 클립보드 붙여넣기 및 키보드 입력 시도...")
+                        editor_area = page.query_selector(".CodeMirror, .ProseMirror, [contenteditable='true'], #editor-contents")
+                        if editor_area:
+                            editor_area.click()
+                            page.evaluate("content => navigator.clipboard.writeText(content)", html_content)
+                            page.keyboard.press("Control+A")
+                            page.keyboard.press("Control+V")
+                            inserted = True
+                    except Exception as paste_err:
+                        logger.warning(f"클립보드 붙여넣기 시도 오류: {paste_err}")
+
                 logger.info(f"✅ 본문 내용 작성 시도 완료 (결과: {inserted})")
 
                 # 6. 태그 입력
                 if tags:
                     logger.info("태그를 입력합니다...")
                     try:
-                        tag_input = page.query_selector("#tagText, input[placeholder*='태그']")
+                        tag_input = page.query_selector("#inp_tag, #tagText, input[placeholder*='태그']")
                         if tag_input:
+                            tag_input.click()
                             tag_list = [t.strip() for t in tags.split(",") if t.strip()]
                             for tag in tag_list:
                                 tag_input.fill(tag)
-                                tag_input.press("Enter")
+                                page.keyboard.press("Enter")
                                 page.wait_for_timeout(300)
                             logger.info("✅ 태그 입력 성공!")
                     except Exception as e:
@@ -268,16 +286,16 @@ class TistoryBrowser:
                 # 7. 발행 버튼 클릭
                 logger.info("발행 버튼을 클릭합니다...")
                 try:
-                    # 1단계: 에디터 완료/발행 버튼
-                    publish_btn_selector = "#confirm-open-btn, button.btn_perform, button.btn_submit, button:has-text('완료'), button:has-text('발행'), #open-btn, .btn_save"
+                    # 1단계: 에디터 하단 '완료' 또는 '발행' 버튼 클릭
+                    publish_btn_selector = "#confirm-open-btn, button:has-text('완료'), button:has-text('발행'), button.btn_perform, button.btn_submit, #open-btn"
                     publish_btn = page.wait_for_selector(publish_btn_selector, timeout=10000)
                     if publish_btn:
                         publish_btn.click()
                         logger.info("1단계 완료/발행 버튼을 클릭했습니다.")
-                        page.wait_for_timeout(1500)
+                        page.wait_for_timeout(2000)
 
-                        # 2단계: 공개발행 레이어/패널 내의 최종 발행 버튼
-                        final_submit_selector = "#published-btn, button.btn_register, button.btn_post, button.btn_toktok, #publish-btn, button:has-text('공개발행'), button:has-text('발행하기'), button:has-text('저장')"
+                        # 2단계: 공개발행 레이어/패널 내의 최종 '공개발행' 버튼 클릭
+                        final_submit_selector = "#published-btn, button:has-text('공개발행'), button.btn_register, button.btn_post, button:has-text('발행하기')"
                         try:
                             final_submit_btn = page.wait_for_selector(final_submit_selector, timeout=8000)
                             if final_submit_btn:
@@ -285,7 +303,7 @@ class TistoryBrowser:
                                 page.wait_for_timeout(4000)
                                 logger.info("✅ 최종 공개발행 완료 버튼 클릭 성공!")
                         except Exception:
-                            logger.info("추가 발행 레이어가 없거나 이미 발행이 시작되었습니다.")
+                            logger.info("추가 발행 레이어가 없거나 이미 발행이 진행 중입니다.")
 
                 except Exception as e:
                     err_msg = f"발행 버튼 클릭 중 오류가 발생했습니다: {e}"

@@ -94,30 +94,24 @@ class TistoryBrowser:
                             last_log_time = now
 
                         try:
-                            # 1. context 내의 모든 페이지 URL 점검
+                            # 브라우저 페이지 탐색 중 간섭(goto) 없이 URL 리다이렉션 결과만 능동 모니터링
                             for p in context.pages:
                                 u = p.url
-                                if "tistory.com" in u and "auth/login" not in u and "accounts.kakao" not in u:
+                                # 로그인/인증 리다이렉트가 끝나고 티스토리 본체 페이지로 돌아왔는지 확인
+                                if "tistory.com" in u and all(x not in u for x in ["auth", "accounts.kakao", "redirect", "login"]):
                                     logged_in = True
-                                    logger.info(f"🎉 로그인 성공 감지! (감지 URL: {u})")
                                     page = p
+                                    logger.info(f"🎉 로그인 성공 감지! (도착 URL: {u})")
                                     break
 
                             if logged_in:
-                                break
-
-                            # 2. 쿠키 기반 로그인 확인
-                            cookies = context.cookies()
-                            cookie_names = [c.get("name", "") for c in cookies]
-                            if "TSSESSION" in cookie_names or "_T_AUTH" in cookie_names or "TSID" in cookie_names:
-                                logged_in = True
-                                logger.info("🎉 로그인 쿠키(TSSESSION/_T_AUTH)가 확인되었습니다!")
                                 break
 
                         except Exception as e:
                             logger.debug(f"로그인 감지 중 예외: {e}")
 
                         time.sleep(1.5)
+                    page.wait_for_timeout(2000)
 
                     if not logged_in:
                         error_msg = "로그인 대기 시간이 초과되었습니다 (3분 내 로그인 필요)."
@@ -130,37 +124,44 @@ class TistoryBrowser:
                 write_url = f"https://{self.blog_name}.tistory.com/manage/post"
                 logger.info(f"글쓰기 에디터({write_url})로 이동 중...")
 
-                # 브라우저 다이얼로그(alert/confirm) 자동 승인 설정
+                # 브라우저 다이얼로그(임시저장 복구 확인 등) 거절 처리로 기존 저장글 이어쓰기 방지
+                def handle_dialog(dialog):
+                    msg = dialog.message
+                    if any(x in msg for x in ["임시", "복구", "불러"]):
+                        logger.info(f"임시저장 복구 확인 창 감지 -> 거절(dismiss) 처리: {msg}")
+                        dialog.dismiss()
+                    else:
+                        dialog.accept()
+
                 try:
-                    page.on("dialog", lambda dialog: dialog.accept())
+                    page.on("dialog", handle_dialog)
                 except Exception:
                     pass
 
                 page.goto(write_url, wait_until="domcontentloaded")
-                page.wait_for_timeout(2000)
+                page.wait_for_timeout(2500)
 
-                # 모달 팝업(임시저장 복구 등) 처리
+                # DOM 팝업(임시저장 복구 등) 취소/새로작성 클릭
                 try:
-                    cancel_btn = page.query_selector("button:has-text('취소'), .btn_cancel, button:has-text('아니오')")
+                    cancel_btn = page.query_selector("button:has-text('취소'), .btn_cancel, button:has-text('아니오'), button:has-text('새로 작성')")
                     if cancel_btn and cancel_btn.is_visible():
                         cancel_btn.click()
-                        logger.info("임시 저장 복구 팝업(취소)을 클릭했습니다.")
-                        page.wait_for_timeout(500)
+                        logger.info("기존 임시 저장 복구 팝업(취소/새로 작성)을 클릭했습니다.")
+                        page.wait_for_timeout(1000)
                 except Exception:
                     pass
 
-                # 3. 에디터 모드를 HTML 모드로 변경 (명시적 요소 대기)
+                # 3. 에디터 모드를 HTML 모드로 변경 (wait_for_selector로 요소 렌더링 명시적 대기)
                 logger.info("에디터 모드를 HTML 모드로 전환합니다...")
                 try:
-                    mode_btn = page.wait_for_selector("#editor-mode-select, button:has-text('기본모드'), #mceu_18-open", timeout=8000)
+                    mode_btn = page.wait_for_selector("#editor-mode-select, button:has-text('기본모드'), #mceu_18-open, .btn_mode", timeout=12000)
                     if mode_btn:
                         mode_btn.click()
-                        page.wait_for_timeout(500)
+                        page.wait_for_timeout(600)
                         html_mode_opt = page.wait_for_selector("li:has-text('HTML'), button:has-text('HTML'), span:has-text('HTML')", timeout=5000)
                         if html_mode_opt:
                             html_mode_opt.click()
-                            page.wait_for_timeout(500)
-                            # 모드 변경 확인 팝업 시
+                            page.wait_for_timeout(800)
                             try:
                                 alert_ok = page.query_selector("button:has-text('확인')")
                                 if alert_ok and alert_ok.is_visible():
@@ -169,14 +170,17 @@ class TistoryBrowser:
                             except Exception:
                                 pass
                 except Exception as e:
-                    logger.warning(f"에디터 모드 전환 버튼 탐색 경고 (기본 모드로 계속 진행): {e}")
+                    logger.warning(f"에디터 모드 전환 탐색 경고: {e}")
 
-                # 4. 제목 입력 (명시적 대기 및 에러 검증)
+                # 4. 제목 입력 (기존 내용 완전 삭제 후 새 제목 작성)
                 logger.info("제목을 입력합니다...")
                 title_selector = "#post-title-inp, textarea.textarea_tit, input[placeholder*='제목'], textarea[placeholder*='제목']"
                 try:
                     title_input = page.wait_for_selector(title_selector, timeout=10000)
                     if title_input:
+                        title_input.click()
+                        title_input.fill("")
+                        page.wait_for_timeout(200)
                         title_input.fill(title)
                         logger.info("✅ 제목 입력 성공!")
                 except Exception as e:
@@ -186,44 +190,65 @@ class TistoryBrowser:
                         context.close()
                     return {"success": False, "error": err_msg}
 
-                # 5. HTML 본문 작성
-                logger.info("HTML 본문을 입력합니다...")
-                page.evaluate("""
+                # 5. 기존 본문 초기화 후 새 HTML 본문 작성
+                logger.info("HTML 본문을 작성합니다 (기존 내용 초기화 후 주입)...")
+                inserted = page.evaluate("""
                     (content) => {
-                        // 1. CodeMirror (HTML mode)
+                        // 1. CodeMirror 에디터 (HTML 모드)
                         const cm = document.querySelector('.CodeMirror');
                         if (cm && cm.CodeMirror) {
+                            cm.CodeMirror.setValue('');
                             cm.CodeMirror.setValue(content);
-                            return;
+                            if (typeof cm.CodeMirror.save === 'function') {
+                                cm.CodeMirror.save();
+                            }
+                            if (typeof cm.CodeMirror.refresh === 'function') {
+                                cm.CodeMirror.refresh();
+                            }
+                            return true;
                         }
+
                         // 2. TinyMCE activeEditor
                         if (window.tinymce && window.tinymce.activeEditor) {
+                            window.tinymce.activeEditor.setContent('');
                             window.tinymce.activeEditor.setContent(content);
-                            return;
+                            if (typeof window.tinymce.activeEditor.save === 'function') {
+                                window.tinymce.activeEditor.save();
+                            }
+                            return true;
                         }
+
                         // 3. TinyMCE iframe
                         const iframe = document.querySelector('iframe#tinymce_ifr, iframe[title*="Rich Text Area"], iframe.mce-edit-area');
                         if (iframe && iframe.contentDocument) {
                             const body = iframe.contentDocument.querySelector('body');
                             if (body) {
                                 body.innerHTML = content;
-                                return;
+                                return true;
                             }
                         }
-                        // 4. Contenteditable area
-                        const ce = document.querySelector('[contenteditable="true"]');
+
+                        // 4. Contenteditable area / ProseMirror
+                        const ce = document.querySelector('[contenteditable="true"], .tt-content, .ProseMirror');
                         if (ce) {
                             ce.innerHTML = content;
-                            return;
+                            ce.dispatchEvent(new Event('input', { bubbles: true }));
+                            ce.dispatchEvent(new Event('change', { bubbles: true }));
+                            return true;
                         }
+
                         // 5. Fallback textarea
                         const textarea = document.querySelector('textarea.CodeMirror-textarea') || document.querySelector('#editor-contents');
                         if (textarea) {
                             textarea.value = content;
+                            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                            textarea.dispatchEvent(new Event('change', { bubbles: true }));
+                            return true;
                         }
+                        return false;
                     }
                 """, html_content)
-                logger.info("✅ 본문 내용 작성 성공!")
+                logger.info(f"✅ 본문 내용 작성 시도 완료 (결과: {inserted})")
 
                 # 6. 태그 입력
                 if tags:
@@ -243,8 +268,8 @@ class TistoryBrowser:
                 # 7. 발행 버튼 클릭
                 logger.info("발행 버튼을 클릭합니다...")
                 try:
-                    # 1단계: 에디터 상단/하단의 완료/발행 버튼
-                    publish_btn_selector = "#confirm-open-btn, button.btn_perform, button:has-text('발행'), button:has-text('완료'), button.btn_submit, #open-btn"
+                    # 1단계: 에디터 완료/발행 버튼
+                    publish_btn_selector = "#confirm-open-btn, button.btn_perform, button.btn_submit, button:has-text('완료'), button:has-text('발행'), #open-btn, .btn_save"
                     publish_btn = page.wait_for_selector(publish_btn_selector, timeout=10000)
                     if publish_btn:
                         publish_btn.click()
@@ -252,12 +277,16 @@ class TistoryBrowser:
                         page.wait_for_timeout(1500)
 
                         # 2단계: 공개발행 레이어/패널 내의 최종 발행 버튼
-                        final_submit_selector = "#published-btn, button.btn_register, button:has-text('공개발행'), button:has-text('발행하기'), button:has-text('저장')"
-                        final_submit_btn = page.wait_for_selector(final_submit_selector, timeout=10000)
-                        if final_submit_btn:
-                            final_submit_btn.click()
-                            page.wait_for_timeout(4000)
-                            logger.info("✅ 최종 공개발행 완료 버튼 클릭 성공!")
+                        final_submit_selector = "#published-btn, button.btn_register, button.btn_post, button.btn_toktok, #publish-btn, button:has-text('공개발행'), button:has-text('발행하기'), button:has-text('저장')"
+                        try:
+                            final_submit_btn = page.wait_for_selector(final_submit_selector, timeout=8000)
+                            if final_submit_btn:
+                                final_submit_btn.click()
+                                page.wait_for_timeout(4000)
+                                logger.info("✅ 최종 공개발행 완료 버튼 클릭 성공!")
+                        except Exception:
+                            logger.info("추가 발행 레이어가 없거나 이미 발행이 시작되었습니다.")
+
                 except Exception as e:
                     err_msg = f"발행 버튼 클릭 중 오류가 발생했습니다: {e}"
                     logger.error(f"❌ {err_msg}")
